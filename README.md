@@ -1,11 +1,16 @@
-# Papan Guru
+# Papan Guru & Edu Launcher
 
 Papan tulis digital untuk layar interaktif Android. Guru bisa menulis dengan jari atau pena di papan tanpa tepi, memakai banyak halaman, menyisipkan gambar dan PDF, lalu mengekspor hasilnya. Semua papan tersimpan otomatis di perangkat dan aplikasi berjalan tanpa koneksi jaringan.
 
-## Fitur
+Repo ini berisi dua aplikasi Android:
 
-- **Beranda.** Aplikasi dibuka di beranda khusus guru: jam dan tanggal, tombol besar untuk papan tulis baru, melanjutkan papan terakhir, dan membuka PDF (papan baru otomatis diberi nama sesuai berkas). Di bawahnya ada deretan papan terbaru beserta gambar kecilnya, serta akses cepat ke browser, berkas, pengaturan, dan semua aplikasi. Tombol rumah di kiri atas papan kembali ke beranda.
-- **Layar utama perangkat.** Dari ikon pengaturan di beranda, pilih "Jadikan layar utama perangkat", lalu pilih Papan Guru di pengaturan Android. Layar interaktif akan langsung menampilkan beranda Papan Guru saat dinyalakan atau saat tombol Home ditekan. Pilihan ini mati secara bawaan dan bisa dimatikan lagi kapan saja.
+- **Papan Guru** (`app/`): papan tulis digital. Dibuka dari ikonnya dan langsung masuk ke papan terakhir.
+- **Edu Launcher** (`launcher/`): layar utama (Home) untuk layar interaktif kelas. Isinya jam dan tanggal, tombol besar untuk papan tulis baru, melanjutkan papan terakhir, dan membuka PDF (papan baru diberi nama sesuai berkas). Di bawahnya ada deretan papan terbaru beserta gambar kecilnya, serta akses cepat ke Papan Guru, browser, berkas, pengaturan, dan semua aplikasi. Setelah dipasang, pilih Edu Launcher sebagai aplikasi layar utama di pengaturan Android (atau lewat ikon pengaturan di Edu Launcher).
+
+Edu Launcher membaca daftar papan dan membuka Papan Guru lewat izin bertanda tangan. Karena itu, **kedua APK harus ditandatangani dengan kunci yang sama**. Kalau berbeda, Edu Launcher tetap berjalan, tetapi tidak bisa menampilkan atau membuka papan. Kode bersama (tema UI dan ikon) ada di modul `core/`.
+
+## Fitur Papan Guru
+
 - **Alat tulis.** Pena, stabilo transparan, penghapus, bentuk (garis, panah, persegi, lingkaran, segitiga), teks, alat pilih, dan geser papan. Ada 10 warna dan beberapa pilihan ketebalan. Ketuk lagi alat yang sedang aktif untuk membuka pilihannya.
 - **Penghapus.** Bisa menghapus sebagian goresan atau objek utuh. Telapak tangan yang menyentuh layar otomatis menjadi penghapus (bisa dimatikan dari pilihan penghapus). Ujung penghapus pada pena stylus juga langsung menghapus.
 - **Pilih dan ubah.** Lingkari objek dengan alat pilih, atau ketuk satu objek. Objek terpilih bisa digeser, diubah ukurannya lewat titik di pojok kanan bawah, diganti warnanya, dibawa ke depan, diduplikat, atau dihapus.
@@ -35,14 +40,14 @@ Kartu timer, pengundi nama, dadu, dan kalkulator bisa dipindah dengan menyeret j
 
 ## Membuat APK
 
-Gunakan JDK 17, lalu pasang Android SDK Platform 35 dan Build Tools 35.0.0. Jika SDK tidak ada di lokasi bawaan, buat `local.properties` berisi `sdk.dir=/path/ke/sdk`. Jalankan `./gradlew :app:assembleDebug` dari root proyek. Hasilnya ada di `app/build/outputs/apk/debug/app-debug.apk`.
+Gunakan JDK 17, lalu pasang Android SDK Platform 35 dan Build Tools 35.0.0. Jika SDK tidak ada di lokasi bawaan, buat `local.properties` berisi `sdk.dir=/path/ke/sdk`. Jalankan `./gradlew :app:assembleDebug :launcher:assembleDebug` dari root proyek. Hasilnya ada di `app/build/outputs/apk/debug/app-debug.apk` (Papan Guru) dan `launcher/build/outputs/apk/debug/launcher-debug.apk` (Edu Launcher). Tambahkan `-PdevInstall` untuk versi uji (`.dev`) yang bisa dipasang berdampingan dengan versi biasa.
 
 Unit test untuk model papan dan format simpan dijalankan dengan `./gradlew :app:testDebugUnitTest`.
 
 ## Uji di layar interaktif
 
-1. Pasang APK debug. Jika ADB sudah terhubung, jalankan `adb install -r artifacts/papan-guru-debug.apk`.
-2. Buka aplikasi dan pastikan beranda tampil rapi. Buat papan baru, kembali ke beranda dengan tombol rumah, lalu buka lagi lewat "Lanjutkan" dan deretan papan terbaru. Coba "Jadikan layar utama perangkat", tekan tombol Home, lalu matikan lagi pilihan itu.
+1. Pasang APK debug. Jika ADB sudah terhubung, jalankan `adb install -r artifacts/papan-guru-debug.apk` dan `adb install -r artifacts/edu-launcher-debug.apk`.
+2. Pasang juga Edu Launcher dan pilih sebagai aplikasi layar utama. Tekan tombol Home dan pastikan Edu Launcher tampil rapi. Buat papan baru dari Edu Launcher, tekan Home, lalu buka lagi papan itu lewat "Lanjutkan" dan deretan papan terbaru. Coba "Buka PDF" dan "Semua aplikasi".
 3. Tulis dengan jari dan pena memakai beberapa warna dan ketebalan. Pastikan garis mengikuti posisi input dan tidak terasa tertunda walaupun papan sudah penuh.
 4. Coba stabilo, lalu kedua mode penghapus. Tempelkan telapak tangan untuk menghapus.
 5. Gambar setiap bentuk dan tambahkan teks. Ketuk teks dengan alat teks untuk mengubahnya.

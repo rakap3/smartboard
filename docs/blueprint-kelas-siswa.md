@@ -20,7 +20,7 @@ Dokumen ini adalah rancangan lengkap untuk menghubungkan **Papan Guru** (aplikas
 ## 1. Alur kelas
 
 ```
- 1. Guru: Beranda → "Mulai kelas"      → layar guru menampilkan kode + QR
+ 1. Guru: Papan Guru → "Mulai kelas"  → layar guru menampilkan kode + QR
  2. Siswa: pindai QR, isi nama          → status "Menunggu persetujuan guru"
  3. Guru: setujui siswa (satu-satu / semua)  → siswa masuk, melihat papan guru
  4. Guru: pilih halaman → "Bagikan sebagai lembar tugas"
@@ -494,8 +494,8 @@ web-siswa/src/
    - item yang berubah → `item.update`,
    - kalau perubahannya lebih dari 50 item, atau berasal dari urungkan/ulangi atau penghapus sebagian → `page.replace`.
 5. ✅ *Sudah ada sejak versi 0.10.1.* **`BoardModel`:** `BoardPage.id` (format `p_` diikuti 12 karakter alfanumerik, disimpan di `board.json`) dan skema ID slot `ItemIds` (§3.5).
-6. **Beranda:**
-   - Tile **"Mulai kelas"**.
+6. **Memulai kelas:**
+   - Tombol **"Mulai kelas"** di Papan Guru. Opsional, tile yang sama di Edu Launcher lewat `BoardsContract` dengan extra baru, misalnya `EXTRA_CLASS`.
    - Pengaturan "Server kelas" berisi alamat server dan kunci perangkat, dengan tombol "Uji koneksi" yang memanggil `/readyz`.
 7. **Panel kelas** (tombol di header papan, dengan badge jumlah permintaan):
    - Kode dan **QR besar** (port satu berkas generator QR berlisensi MIT).

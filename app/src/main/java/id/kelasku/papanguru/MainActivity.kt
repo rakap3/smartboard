@@ -1,5 +1,7 @@
 package id.kelasku.papanguru
 
+import id.kelasku.core.BoardsContract
+import id.kelasku.core.Ui
 import android.app.Activity
 import android.app.Dialog
 import android.content.ClipData
@@ -142,16 +144,44 @@ class MainActivity : Activity() {
             rightMargin = ui.dp(24)
         })
         setContentView(container)
-        openDocument(startDocument(savedInstanceState))
+        openDocument(initialDocument())
         applyTool()
         ui.hideSystemBars()
-        // Requests from the home screen run once; a recreated activity keeps the open board instead.
-        if (savedInstanceState == null) {
-            val pdf = intent.data
-            when {
-                pdf != null && intent.getBooleanExtra(EXTRA_PDF, false) -> board.post { importPdf(pdf) }
-                intent.getBooleanExtra(EXTRA_BOARDS, false) -> board.post { showBoardsDialog() }
-            }
+        // A launcher request runs once; a recreated activity keeps the open board instead.
+        if (savedInstanceState == null) handleLauncherIntent(intent)
+    }
+
+    /** The activity is singleTask, so Edu Launcher requests reach a running board here. */
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleLauncherIntent(intent)
+    }
+
+    /**
+     * Opens or creates the board Edu Launcher asked for. Only intents that came through the
+     * permission-protected [BoardsContract.ENTRY_ACTIVITY] alias are honoured, so other apps
+     * can't create boards or push PDFs into the board.
+     */
+    private fun handleLauncherIntent(intent: Intent) {
+        if (intent.component?.className != BoardsContract.ENTRY_ACTIVITY) return
+        if (busy) {
+            toast("Tunggu proses yang sedang berjalan selesai")
+            return
+        }
+        val target = when {
+            intent.getBooleanExtra(BoardsContract.EXTRA_NEW, false) ->
+                store.create(intent.getStringExtra(BoardsContract.EXTRA_NAME)?.trim()?.take(60)?.takeIf { it.isNotEmpty() } ?: nextBoardName())
+            else -> intent.getStringExtra(BoardsContract.EXTRA_BOARD)?.let(store::load)
+        }
+        if (target != null && target.id != doc.id) {
+            saveNow()
+            openDocument(target)
+        }
+        val pdf = intent.data
+        when {
+            pdf != null && intent.getBooleanExtra(BoardsContract.EXTRA_PDF, false) -> board.post { importPdf(pdf) }
+            intent.getBooleanExtra(BoardsContract.EXTRA_BOARDS, false) -> board.post { showBoardsDialog() }
         }
     }
 
@@ -167,16 +197,6 @@ class MainActivity : Activity() {
     }
 
     // region Documents and saving
-
-    private fun startDocument(saved: Bundle?): BoardDocument {
-        if (saved == null) {
-            if (intent.getBooleanExtra(EXTRA_NEW, false)) {
-                return store.create(intent.getStringExtra(EXTRA_NAME)?.takeIf { it.isNotBlank() } ?: nextBoardName())
-            }
-            intent.getStringExtra(EXTRA_BOARD)?.let { id -> store.load(id)?.let { return it } }
-        }
-        return initialDocument()
-    }
 
     /** "Papan N" with the first N that no board uses yet. */
     private fun nextBoardName(): String {
@@ -251,9 +271,6 @@ class MainActivity : Activity() {
 
     private fun buildHeader() = LinearLayout(this).apply {
         gravity = Gravity.CENTER_VERTICAL
-        addView(ui.iconButton("Beranda", R.drawable.ic_home).apply {
-            setOnClickListener { goHome() }
-        }, LinearLayout.LayoutParams(ui.dp(44), ui.dp(44)))
         addView(ui.iconButton("Papan saya", R.drawable.ic_folder).apply {
             setOnClickListener { showBoardsDialog() }
         }, LinearLayout.LayoutParams(ui.dp(44), ui.dp(44)))
@@ -726,13 +743,6 @@ class MainActivity : Activity() {
     }
 
     // endregion
-
-    /** Back to the home screen; it is singleTask in this task, so this board activity finishes. */
-    private fun goHome() {
-        saveNow()
-        startActivity(Intent(this, HomeActivity::class.java))
-        finish()
-    }
 
     // region Boards
 
@@ -1466,13 +1476,6 @@ class MainActivity : Activity() {
     // endregion
 
     companion object {
-        /** Intent extras used by [HomeActivity]. */
-        const val EXTRA_BOARD = "id.kelasku.papanguru.BOARD"
-        const val EXTRA_NEW = "id.kelasku.papanguru.NEW"
-        const val EXTRA_NAME = "id.kelasku.papanguru.NAME"
-        const val EXTRA_PDF = "id.kelasku.papanguru.PDF"
-        const val EXTRA_BOARDS = "id.kelasku.papanguru.BOARDS"
-
         private const val REQ_SAVE = 30
         private const val REQ_IMAGE = 32
         private const val REQ_PDF = 33

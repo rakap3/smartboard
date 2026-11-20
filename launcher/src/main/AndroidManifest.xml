@@ -1,0 +1,49 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
+
+    <!-- Reads Papan Guru's board list and opens boards. Declared by both apps (same signing key). -->
+    <permission
+        android:name="id.kelasku.permission.BOARDS"
+        android:label="Akses papan Papan Guru"
+        android:protectionLevel="signature" />
+    <uses-permission android:name="id.kelasku.permission.BOARDS" />
+
+    <!-- Package visibility (Android 11+): Papan Guru, every launchable app, the default browser. -->
+    <queries>
+        <package android:name="id.kelasku.papanguru" />
+        <package android:name="id.kelasku.papanguru.dev" />
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.APP_BROWSER" />
+        </intent>
+    </queries>
+
+    <application
+        android:label="${appLabel}"
+        android:icon="${appIcon}"
+        android:roundIcon="${appIcon}"
+        android:theme="@android:style/Theme.Material.NoActionBar">
+        <activity
+            android:name="id.kelasku.edulauncher.HomeActivity"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:stateNotNeeded="true"
+            android:clearTaskOnLaunch="true"
+            android:screenOrientation="landscape">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.HOME" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <!-- Also listed in the app drawer, so it can be opened before it is the home app. -->
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

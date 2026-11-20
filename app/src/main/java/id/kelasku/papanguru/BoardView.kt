@@ -1,5 +1,6 @@
 package id.kelasku.papanguru
 
+import id.kelasku.core.Ui
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas

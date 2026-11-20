@@ -1,10 +1,14 @@
-package id.kelasku.papanguru
+package id.kelasku.edulauncher
 
 import android.app.Activity
 import android.content.ActivityNotFoundException
+import android.content.BroadcastReceiver
 import android.content.ComponentName
+import android.content.Context
+import android.content.IntentFilter
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.database.Cursor
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color
@@ -33,14 +37,17 @@ import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
+import id.kelasku.core.BoardsContract
+import id.kelasku.core.Ui
 
 /**
- * Teacher home screen: the app's entry point, and optionally the device's home screen
- * (the disabled-by-default `HomeLauncher` alias adds the HOME category).
+ * Edu Launcher's home screen (HOME category): clock, Papan Guru shortcuts and recent boards
+ * (read from Papan Guru's provider, see [BoardsContract]), and every app on the device.
  */
 class HomeActivity : Activity() {
     private lateinit var ui: Ui
-    private lateinit var store: BoardStore
+    /** Papan Guru package this launcher talks to (`.dev` for dev builds). */
+    private lateinit var boardPackage: String
     private val handler = Handler(Looper.getMainLooper())
     private val locale = Locale("id", "ID")
 
@@ -55,7 +62,14 @@ class HomeActivity : Activity() {
     private lateinit var notice: TextView
     private lateinit var container: FrameLayout
     private var appsPanel: View? = null
-    private var lastBoard: BoardSummary? = null
+    /** Cached launchable apps; null until the first background load finishes. */
+    private var apps: List<AppEntry>? = null
+    private var appsLoading = false
+    private var appsStale = false
+    private val appsWaiters = mutableListOf<(List<AppEntry>) -> Unit>()
+    private var lastBoard: BoardRow? = null
+
+    private class BoardRow(val id: String, val name: String, val modified: Long, val pages: Int)
 
     private val tick = object : Runnable {
         override fun run() {
@@ -70,7 +84,7 @@ class HomeActivity : Activity() {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         ui = Ui(this)
-        store = BoardStore(this)
+        boardPackage = getString(R.string.board_package)
 
         val page = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -89,7 +103,7 @@ class HomeActivity : Activity() {
         }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = ui.dp(10) })
         page.addView(sectionHeader("Aplikasi", null, null), LinearLayout.LayoutParams(-1, -2).apply { topMargin = ui.dp(26) })
         page.addView(buildAppTiles(), LinearLayout.LayoutParams(-1, -2).apply { topMargin = ui.dp(10) })
-        page.addView(ui.label("Papan Guru ${versionName()}", 12f, 0xFF7D818B.toInt()).apply { gravity = Gravity.CENTER },
+        page.addView(ui.label("${getString(R.string.app_name)} ${versionName()}", 12f, 0xFF7D818B.toInt()).apply { gravity = Gravity.CENTER },
             LinearLayout.LayoutParams(-1, -2).apply { topMargin = ui.dp(28) })
 
         container = FrameLayout(this).apply { background = homeBackground() }
@@ -106,7 +120,21 @@ class HomeActivity : Activity() {
         }
         container.addView(notice, FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL).apply { bottomMargin = ui.dp(32) })
         setContentView(container)
+        refreshApps()
+        val packages = IntentFilter().apply {
+            addAction(Intent.ACTION_PACKAGE_ADDED)
+            addAction(Intent.ACTION_PACKAGE_REMOVED)
+            addAction(Intent.ACTION_PACKAGE_CHANGED)
+            addDataScheme("package")
+        }
+        if (Build.VERSION.SDK_INT >= 33) registerReceiver(packageReceiver, packages, Context.RECEIVER_NOT_EXPORTED)
+        else registerReceiver(packageReceiver, packages)
         ui.hideSystemBars()
+    }
+
+    override fun onDestroy() {
+        unregisterReceiver(packageReceiver)
+        super.onDestroy()
     }
 
     override fun onResume() {
@@ -147,7 +175,7 @@ class HomeActivity : Activity() {
             setImageResource(applicationInfo.icon)
             importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
         }, LinearLayout.LayoutParams(ui.dp(40), ui.dp(40)))
-        addView(ui.label("Papan Guru", 20f, Ui.TEXT, bold = true).apply { setPadding(ui.dp(12), 0, 0, 0) }, LinearLayout.LayoutParams(0, -2, 1f))
+        addView(ui.label(getString(R.string.app_name), 20f, Ui.TEXT, bold = true).apply { setPadding(ui.dp(12), 0, 0, 0) }, LinearLayout.LayoutParams(0, -2, 1f))
         val time = LinearLayout(this@HomeActivity).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.END
@@ -157,7 +185,7 @@ class HomeActivity : Activity() {
         time.addView(clock)
         time.addView(date)
         addView(time, LinearLayout.LayoutParams(-2, -2).apply { marginEnd = ui.dp(12) })
-        val settings = ui.iconButton("Pengaturan beranda", R.drawable.ic_settings)
+        val settings = ui.iconButton("Pengaturan Edu Launcher", R.drawable.ic_settings)
         settings.setOnClickListener { showSettings(settings) }
         addView(settings, LinearLayout.LayoutParams(ui.dp(48), ui.dp(48)))
     }
@@ -227,6 +255,9 @@ class HomeActivity : Activity() {
     }
 
     private fun buildAppTiles() = LinearLayout(this).apply {
+        boardAppIcon()?.let { icon ->
+            addView(appTile("Papan Guru", drawable = icon) { openBoardApp() })
+        }
         addView(appTile("Browser", R.drawable.ic_browser) {
             launch(Intent.makeMainSelectorActivity(Intent.ACTION_MAIN, Intent.CATEGORY_APP_BROWSER), "Browser tidak tersedia")
         })
@@ -279,24 +310,58 @@ class HomeActivity : Activity() {
     }
 
     private fun refreshBoards() {
-        // Listing runs after any pending board saves, so names and thumbnails are current.
-        store.afterPendingWrites {
-            val boards = store.list()
-            val thumbs = boards.take(RECENT).map { decodeThumb(it) }
+        Thread {
+            val result = loadBoards()
+            val thumbs = result.boards?.take(RECENT)?.map(::loadThumb).orEmpty()
             runOnUiThread {
                 if (isDestroyed) return@runOnUiThread
-                showBoards(boards, thumbs)
+                showBoards(result, thumbs)
             }
+        }.start()
+    }
+
+    private class BoardsResult(val boards: List<BoardRow>?, val problem: String?)
+
+    /** Board rows from Papan Guru, or why they can't be read. Runs off the UI thread. */
+    private fun loadBoards(): BoardsResult {
+        if (!boardAppInstalled()) return BoardsResult(null, "Papan Guru belum terpasang di perangkat ini.")
+        val uri = Uri.parse("content://${BoardsContract.authority(boardPackage)}/${BoardsContract.PATH_BOARDS}?limit=${RECENT + 1}")
+        return try {
+            val rows = contentResolver.query(uri, null, null, null, null)?.use(::readRows)
+            if (rows == null) BoardsResult(null, "Daftar papan belum tersedia. Perbarui Papan Guru ke versi terbaru.")
+            else BoardsResult(rows, null)
+        } catch (_: SecurityException) {
+            // Different signing key: the signature permission isn't granted.
+            BoardsResult(null, "Edu Launcher tidak diizinkan membaca papan. Pasang Papan Guru dan Edu Launcher dari sumber yang sama.")
+        } catch (_: Exception) {
+            BoardsResult(null, "Daftar papan tidak bisa dimuat.")
         }
     }
 
-    private fun decodeThumb(summary: BoardSummary): Bitmap? = try {
-        BitmapFactory.decodeFile(summary.thumbnail.path)
+    private fun readRows(c: Cursor): List<BoardRow> {
+        val id = c.getColumnIndex(BoardsContract.COLUMN_ID)
+        val name = c.getColumnIndex(BoardsContract.COLUMN_NAME)
+        val modified = c.getColumnIndex(BoardsContract.COLUMN_MODIFIED)
+        val pages = c.getColumnIndex(BoardsContract.COLUMN_PAGES)
+        if (id < 0 || name < 0) return emptyList()
+        val rows = mutableListOf<BoardRow>()
+        while (c.moveToNext()) {
+            rows += BoardRow(c.getString(id), c.getString(name), if (modified >= 0) c.getLong(modified) else 0L, if (pages >= 0) c.getInt(pages) else 1)
+        }
+        return rows
+    }
+
+    private fun loadThumb(board: BoardRow): Bitmap? = try {
+        val uri = Uri.parse("content://${BoardsContract.authority(boardPackage)}/${BoardsContract.PATH_THUMB}/${Uri.encode(board.id)}")
+        contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it) }
+    } catch (_: Exception) {
+        null
     } catch (_: OutOfMemoryError) {
         null
     }
 
-    private fun showBoards(boards: List<BoardSummary>, thumbs: List<Bitmap?>) {
+    private fun showBoards(result: BoardsResult, thumbs: List<Bitmap?>) {
+        val boards = result.boards.orEmpty()
         val last = boards.firstOrNull()
         lastBoard = last
         if (last != null) {
@@ -311,12 +376,12 @@ class HomeActivity : Activity() {
             }
         } else {
             resumeTitle.text = "Lanjutkan"
-            resumeSubtitle.text = "Belum ada papan tersimpan"
+            resumeSubtitle.text = if (result.problem != null) "Papan Guru tidak tersedia" else "Belum ada papan tersimpan"
         }
 
         recentRow.removeAllViews()
         if (boards.isEmpty()) {
-            recentRow.addView(ui.label("Papan yang dibuat akan muncul di sini.", 14f, Ui.MUTED).apply {
+            recentRow.addView(ui.label(result.problem ?: "Papan yang dibuat akan muncul di sini.", 14f, Ui.MUTED).apply {
                 setPadding(0, ui.dp(8), 0, ui.dp(8))
             })
             return
@@ -329,7 +394,7 @@ class HomeActivity : Activity() {
         }
     }
 
-    private fun boardCard(summary: BoardSummary, thumb: Bitmap?) = LinearLayout(this).apply {
+    private fun boardCard(summary: BoardRow, thumb: Bitmap?) = LinearLayout(this).apply {
         orientation = LinearLayout.VERTICAL
         setPadding(ui.dp(8), ui.dp(8), ui.dp(8), ui.dp(10))
         background = tileBackground(false)
@@ -381,20 +446,53 @@ class HomeActivity : Activity() {
     // region Actions
 
     private fun openBoard(id: String? = null, new: Boolean = false, showList: Boolean = false, pdf: Uri? = null, name: String? = null) {
-        startActivity(Intent(this, MainActivity::class.java).apply {
-            id?.let { putExtra(MainActivity.EXTRA_BOARD, it) }
-            if (new) putExtra(MainActivity.EXTRA_NEW, true)
-            name?.let { putExtra(MainActivity.EXTRA_NAME, it) }
-            if (showList) putExtra(MainActivity.EXTRA_BOARDS, true)
+        val intent = Intent().apply {
+            component = ComponentName(boardPackage, BoardsContract.ENTRY_ACTIVITY)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            id?.let { putExtra(BoardsContract.EXTRA_BOARD, it) }
+            if (new) putExtra(BoardsContract.EXTRA_NEW, true)
+            name?.let { putExtra(BoardsContract.EXTRA_NAME, it) }
+            if (showList) putExtra(BoardsContract.EXTRA_BOARDS, true)
             if (pdf != null) {
                 data = pdf
-                putExtra(MainActivity.EXTRA_PDF, true)
+                putExtra(BoardsContract.EXTRA_PDF, true)
+                // Pass on the read grant this launcher got from the document picker.
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
-        })
+        }
+        try {
+            startActivity(intent)
+        } catch (_: ActivityNotFoundException) {
+            toast("Papan Guru belum terpasang")
+        } catch (_: SecurityException) {
+            toast("Edu Launcher tidak diizinkan membuka Papan Guru")
+        }
+    }
+
+    /** Opens Papan Guru normally (its own last board), like tapping its app icon. */
+    private fun openBoardApp() {
+        val launch = packageManager.getLaunchIntentForPackage(boardPackage)
+        if (launch == null) toast("Papan Guru belum terpasang") else launch(launch, "Papan Guru tidak bisa dibuka")
+    }
+
+    private fun boardAppInstalled(): Boolean = try {
+        packageManager.getPackageInfo(boardPackage, 0)
+        true
+    } catch (_: PackageManager.NameNotFoundException) {
+        false
+    }
+
+    private fun boardAppIcon(): Drawable? = try {
+        packageManager.getApplicationIcon(boardPackage)
+    } catch (_: PackageManager.NameNotFoundException) {
+        null
     }
 
     private fun pickPdf() {
+        if (!boardAppInstalled()) {
+            toast("Papan Guru belum terpasang")
+            return
+        }
         try {
             @Suppress("DEPRECATION")
             startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
@@ -455,30 +553,9 @@ class HomeActivity : Activity() {
 
     private fun showSettings(anchor: View) {
         ui.menu(anchor, listOf(
-            Ui.MenuEntry("Jadikan layar utama perangkat", R.drawable.ic_home, checked = homeAliasEnabled()) { toggleHome() },
-            Ui.MenuEntry("Pilih aplikasi layar utama", R.drawable.ic_apps) { openHomeSettings() },
+            Ui.MenuEntry("Pilih aplikasi layar utama", R.drawable.ic_home, checked = isDefaultHome()) { openHomeSettings() },
             Ui.MenuEntry("Pengaturan Android", R.drawable.ic_settings) { launch(Intent(Settings.ACTION_SETTINGS), "Pengaturan tidak tersedia") },
         ))
-    }
-
-    private val homeAlias get() = ComponentName(packageName, "id.kelasku.papanguru.HomeLauncher")
-
-    private fun homeAliasEnabled() =
-        packageManager.getComponentEnabledSetting(homeAlias) == PackageManager.COMPONENT_ENABLED_STATE_ENABLED
-
-    private fun toggleHome() {
-        val enable = !homeAliasEnabled()
-        packageManager.setComponentEnabledSetting(
-            homeAlias,
-            if (enable) PackageManager.COMPONENT_ENABLED_STATE_ENABLED else PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
-            PackageManager.DONT_KILL_APP,
-        )
-        if (enable) {
-            toast("Pilih Papan Guru sebagai aplikasi layar utama")
-            handler.postDelayed({ openHomeSettings() }, 900)
-        } else {
-            toast("Papan Guru tidak lagi menjadi layar utama")
-        }
     }
 
     private fun openHomeSettings() {
@@ -539,25 +616,64 @@ class HomeActivity : Activity() {
         }
         appsPanel = panel
         container.addView(panel, FrameLayout.LayoutParams(-1, -1))
-        Thread {
-            val apps = loadApps()
-            runOnUiThread {
-                if (appsPanel !== panel) return@runOnUiThread
+        val fill = { list: List<AppEntry> ->
+            if (appsPanel === panel) {
                 grid.removeView(loading)
-                val columns = ((container.width - ui.dp(56)) / ui.dp(128)).coerceAtLeast(3)
-                var row: LinearLayout? = null
-                apps.forEachIndexed { i, app ->
-                    if (i % columns == 0) row = LinearLayout(this).also {
-                        grid.addView(it, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = ui.dp(12) })
-                    }
-                    row?.addView(appTile(app.label, drawable = app.icon) {
-                        closeApps()
-                        launch(app.launch, "Aplikasi tidak bisa dibuka")
-                    })
+                fillApps(grid, list)
+            }
+        }
+        val ready = apps
+        if (ready != null) fill(ready) else {
+            appsWaiters += fill
+            refreshApps()
+        }
+    }
+
+    private fun fillApps(grid: LinearLayout, list: List<AppEntry>) {
+        val columns = ((container.width - ui.dp(56)) / ui.dp(128)).coerceAtLeast(3)
+        var row: LinearLayout? = null
+        list.forEachIndexed { i, app ->
+            if (i % columns == 0) row = LinearLayout(this).also {
+                grid.addView(it, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = ui.dp(12) })
+            }
+            row?.addView(appTile(app.label, drawable = app.icon) {
+                closeApps()
+                launch(app.launch, "Aplikasi tidak bisa dibuka")
+            })
+        }
+        if (list.isEmpty()) grid.addView(ui.label("Tidak ada aplikasi lain.", 15f, Ui.MUTED))
+    }
+
+    /**
+     * Loads the app list (labels and icons take seconds with ~200 apps) in the background and
+     * keeps it, so "Semua aplikasi" opens at once. Rerun when packages change. UI thread only.
+     */
+    private fun refreshApps() {
+        if (appsLoading) {
+            appsStale = true
+            return
+        }
+        appsLoading = true
+        Thread {
+            val list = loadApps()
+            runOnUiThread {
+                appsLoading = false
+                apps = list
+                val waiting = appsWaiters.toList()
+                appsWaiters.clear()
+                if (!isDestroyed) waiting.forEach { it(list) }
+                if (appsStale) {
+                    appsStale = false
+                    refreshApps()
                 }
-                if (apps.isEmpty()) grid.addView(ui.label("Tidak ada aplikasi lain.", 15f, Ui.MUTED))
             }
         }.start()
+    }
+
+    private val packageReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            refreshApps()
+        }
     }
 
     private fun closeApps() {

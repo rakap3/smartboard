@@ -1,5 +1,6 @@
 package id.kelasku.papanguru
 
+import id.kelasku.core.Ui
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.SharedPreferences

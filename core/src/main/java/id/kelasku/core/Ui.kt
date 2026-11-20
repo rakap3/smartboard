@@ -1,4 +1,4 @@
-package id.kelasku.papanguru
+package id.kelasku.core
 
 import android.app.Activity
 import android.graphics.Color
@@ -24,8 +24,8 @@ import android.widget.ScrollView
 import android.widget.TextView
 import kotlin.math.roundToInt
 
-/** Shared look for the board UI, built in code (the app has no XML layouts or AndroidX). */
-internal class Ui(private val activity: Activity) {
+/** Shared look for Papan Guru and Edu Launcher, built in code (no XML layouts or AndroidX). */
+class Ui(private val activity: Activity) {
     private val density = activity.resources.displayMetrics.density
 
     fun dp(value: Number) = (value.toFloat() * density).roundToInt()

@@ -4,7 +4,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-**Papan Guru** (`id.kelasku.papanguru`) is an offline Android smart-board app for interactive classroom displays. It runs in landscape and also appears in the TV (Leanback) launcher. Boards have multiple pages and are autosaved on the device. The app supports pens, shapes, text, selection, images, PDF import, and PDF/PNG export. The README and all user-facing text are in Indonesian. Keep new UI strings and content descriptions in Indonesian too.
+The repo builds two Android apps that share a `:core` library module:
+
+- **Edu Launcher** (`:launcher`, `id.kelasku.edulauncher`) is the classroom home screen (HOME category). It reads Papan Guru's boards and opens them through `core/BoardsContract`.
+- **Papan Guru** (`:app`, `id.kelasku.papanguru`), described in the rest of this section.
+
+**Papan Guru** is an offline Android smart-board app for interactive classroom displays. It runs in landscape and also appears in the TV (Leanback) launcher. Boards have multiple pages and are autosaved on the device. The app supports pens, shapes, text, selection, images, PDF import, and PDF/PNG export. The README and all user-facing text are in Indonesian. Keep new UI strings and content descriptions in Indonesian too.
 
 `Panduan Teknis Penyiapan Server Kelas Interaktif.docx` is a planning document for a future sync backend. It describes Node.js 24, TypeScript, `ws` and MySQL behind Caddy, with `stroke.begin`/`stroke.points`/`stroke.end` messages. No backend code exists yet. Read the document with `textutil -convert txt -stdout "<file>"` before doing any sync or networking work. `docs/blueprint-kelas-siswa.md` is the draft design built on it: the class flow (worksheets each student fills privately, teacher monitoring, one-at-a-time presentations, teacher-approved joins), the WebSocket protocol, database schema, the web student app (`web-siswa/`) and the changes needed in this app. Its open decisions are listed in §14.
 
@@ -13,18 +18,19 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 You need JDK 17 and Android SDK Platform 35 with Build Tools 35.0.0. On this machine the SDK is at `/Users/mac/Documents/sdk`. `local.properties` points there and is gitignored.
 
 ```sh
-./gradlew :app:assembleDebug                 # → app/build/outputs/apk/debug/app-debug.apk
+./gradlew :app:assembleDebug                 # → app/build/outputs/apk/debug/app-debug.apk (Papan Guru)
+./gradlew :launcher:assembleDebug            # → launcher/build/outputs/apk/debug/launcher-debug.apk (Edu Launcher)
 ./gradlew :app:testDebugUnitTest             # JVM unit tests (app/src/test)
 ./gradlew :app:testDebugUnitTest --tests 'id.kelasku.papanguru.BoardModelTest.codecRoundTrip'
 ./gradlew :app:lintDebug                     # catches API-level problems (minSdk 23)
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
-`artifacts/papan-guru-debug.apk` is a prebuilt copy for installing on classroom devices. README.md has the manual on-device checklist ("Uji di layar interaktif"). Bump `versionCode`/`versionName` in `app/build.gradle.kts` for each release.
+`artifacts/papan-guru-debug.apk` and `artifacts/edu-launcher-debug.apk` are prebuilt copies for installing on classroom devices (APKs are gitignored). README.md has the manual on-device checklist ("Uji di layar interaktif"). Bump `versionCode`/`versionName` in `app/build.gradle.kts` for each release.
 
 ## Architecture
 
-The app has no runtime dependencies: no AndroidX, Compose or XML layouts. Everything uses framework classes, and the UI is built in code through the helpers in `Ui.kt`. JUnit and `org.json` are test-only dependencies. `org.json` is needed because android.jar only has stubs of it on the JVM. `minSdk` is 23, so guard newer APIs with `Build.VERSION.SDK_INT` checks. Only debug builds allow cleartext traffic (the `cleartext` manifest placeholder), because the class server is plain `http://` during development. Release builds stay HTTPS-only.
+Neither app has third-party runtime dependencies: no AndroidX, Compose or XML layouts. Everything uses framework classes, and the UI is built in code through the helpers in `core/.../Ui.kt`. JUnit and `org.json` are test-only dependencies. `org.json` is needed because android.jar only has stubs of it on the JVM. `minSdk` is 23, so guard newer APIs with `Build.VERSION.SDK_INT` checks. Only debug builds allow cleartext traffic (the `cleartext` manifest placeholder), because the class server is plain `http://` during development. Release builds stay HTTPS-only.
 
 Avoid `use {}` on `PdfRenderer` and its pages. They only implement `AutoCloseable` on newer releases, so close them explicitly.
 
@@ -55,10 +61,14 @@ Avoid `use {}` on `PdfRenderer` and its pages. They only implement `AutoCloseabl
 - **`BoardFiles.kt`** handles blocking image and PDF import and export. Run it off the UI thread.
   - **PDF import.** Each PDF page is rendered to a JPEG and becomes a white page holding one `locked` `ImageItem`. Locked images can't be selected or erased.
   - **Export bounds.** Exports cover `exportBounds`, which is the home frame (the view at 100% zoom) grown to include all content.
-- **`HomeActivity.kt`** is the launcher entry point (`singleTask`, same task as the board). It shows the clock, big tiles (new board, resume, open PDF), recent boards and app shortcuts.
-  - **Opening boards.** It starts `MainActivity` with the `EXTRA_*` constants from `MainActivity`'s companion. Extras are only honoured when `savedInstanceState == null`, so recreation doesn't create another board. PDFs are picked here first, so cancelling leaves no empty board.
-  - **Device home screen.** The manifest's `HomeLauncher` activity-alias adds the HOME category. It is disabled by default and toggled at runtime with `setComponentEnabledSetting`. Don't enable it in the manifest, or every install would prompt for a launcher.
-  - **Icons.** Launcher icons are vector/adaptive (`mipmap-anydpi-v26`, plain vector in `mipmap/` for API 23–25). TV banners are PNGs in `drawable-xhdpi/`. The `-PdevInstall` build swaps in the orange `_dev` icon and banner via the `appIcon`/`appBanner` manifest placeholders.
+- **`:core`** (`id.kelasku.core`) holds `Ui`, the icons both apps use, and `BoardsContract`. `gradle.properties` sets `android.nonTransitiveRClass=false`, so app code can use core drawables as plain `R.drawable.*`.
+- **Launcher ↔ board app contract (`BoardsContract`).** Both apps declare the signature permission `id.kelasku.permission.BOARDS`. Declaring it in both means install order doesn't matter, but both APKs must share a signing key.
+  - **`BoardsProvider`** (exported, guarded by the permission) lists boards (`content://<pkg>.boards/boards`) and serves thumbnails (`/thumb/<id>`). Before listing, it waits briefly for pending saves.
+  - **`LauncherEntry`** is an exported activity-alias of `MainActivity`, guarded by the permission. `MainActivity` honours the `EXTRA_*` extras only when `intent.component` is this alias, so the normal launcher icon can't be used to inject them. `MainActivity` is `singleTask`, so requests reach a running board through `onNewIntent`. Extras are ignored on recreation.
+  - **The launcher picks PDFs itself** and passes the URI with `FLAG_GRANT_READ_URI_PERMISSION`, so cancelling the picker leaves no empty board.
+  - **Dev builds.** `-PdevInstall` gives both apps a `.dev` suffix. The dev launcher targets `id.kelasku.papanguru.dev` through the `board_package` resValue.
+- **`launcher/.../HomeActivity.kt`** is Edu Launcher's single screen. It shows the clock, big Papan Guru tiles, recent boards from the provider (loaded off the UI thread), shortcut tiles, and an all-apps overlay. Loading labels and icons for about 200 apps takes seconds, so the app list is loaded in the background at start, cached, and reloaded on `PACKAGE_ADDED`/`REMOVED`/`CHANGED`. Back does nothing while it is the default home app.
+  - **Icons.** Both apps use vector/adaptive launcher icons (`mipmap-anydpi-v26`, plain vector in `mipmap/` for API 23–25). Papan Guru's TV banners are PNGs in `app/.../drawable-xhdpi/`. `-PdevInstall` swaps in the orange `_dev` icon (and banner) through the `appIcon`/`appBanner` manifest placeholders.
 - **`MainActivity.kt`** builds the header, the bottom dock (inside a `HorizontalScrollView`), the selection bar, and all dialogs and popups.
   - **Settings and autosave.** Tool settings live in SharedPreferences (`papan`). Autosave is debounced by 1.5 s and also runs in `onPause`.
   - **File pickers.** They use `startActivityForResult` with request codes `REQ_SAVE`, `REQ_IMAGE` and `REQ_PDF`. `pendingWrite` holds the writer for the next create-document result.

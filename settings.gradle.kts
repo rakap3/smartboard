@@ -14,4 +14,4 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "PapanGuru"
-include(":app")
+include(":core", ":app", ":launcher")

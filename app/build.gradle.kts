@@ -1,8 +1,8 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
-    id("com.android.application") version "8.9.1"
-    id("org.jetbrains.kotlin.android") version "2.1.20"
+    id("com.android.application")
+    id("org.jetbrains.kotlin.android")
 }
 
 android {
@@ -13,8 +13,8 @@ android {
         applicationId = "id.kelasku.papanguru"
         minSdk = 23
         targetSdk = 35
-        versionCode = 15
-        versionName = "0.10.1"
+        versionCode = 16
+        versionName = "0.11.0"
         manifestPlaceholders["appLabel"] = "@string/app_name"
         manifestPlaceholders["appIcon"] = "@mipmap/ic_launcher"
         manifestPlaceholders["appBanner"] = "@drawable/banner"
@@ -48,7 +48,8 @@ kotlin {
 }
 
 dependencies {
-    // Test-only: the app itself has no dependencies. org.json is stubbed in android.jar on the JVM.
+    implementation(project(":core"))
+    // Test-only: the app has no third-party runtime dependencies. org.json is stubbed in android.jar on the JVM.
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.json:json:20240303")
 }

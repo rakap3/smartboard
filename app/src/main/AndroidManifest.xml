@@ -5,17 +5,12 @@
     <!-- Classroom sync with the class server (WebSocket + HTTP API). -->
     <uses-permission android:name="android.permission.INTERNET" />
 
-    <!-- The home screen lists and opens other apps (package visibility, Android 11+). -->
-    <queries>
-        <intent>
-            <action android:name="android.intent.action.MAIN" />
-            <category android:name="android.intent.category.LAUNCHER" />
-        </intent>
-        <intent>
-            <action android:name="android.intent.action.MAIN" />
-            <category android:name="android.intent.category.APP_BROWSER" />
-        </intent>
-    </queries>
+    <!-- Lets Edu Launcher (same signing key) list boards and open them. Declared by both apps. -->
+    <permission
+        android:name="id.kelasku.permission.BOARDS"
+        android:label="Akses papan Papan Guru"
+        android:protectionLevel="signature" />
+    <uses-permission android:name="id.kelasku.permission.BOARDS" />
 
     <application
         android:label="${appLabel}"
@@ -30,12 +25,18 @@
             android:exported="false"
             android:grantUriPermissions="true" />
 
-        <!-- Teacher home screen: the app's entry point. -->
+        <!-- Board list and thumbnails for Edu Launcher. -->
+        <provider
+            android:name="id.kelasku.papanguru.BoardsProvider"
+            android:authorities="${applicationId}.boards"
+            android:exported="true"
+            android:readPermission="id.kelasku.permission.BOARDS"
+            android:writePermission="id.kelasku.permission.BOARDS" />
+
         <activity
-            android:name="id.kelasku.papanguru.HomeActivity"
+            android:name="id.kelasku.papanguru.MainActivity"
             android:exported="true"
             android:launchMode="singleTask"
-            android:stateNotNeeded="true"
             android:screenOrientation="landscape">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -47,22 +48,11 @@
             </intent-filter>
         </activity>
 
-        <!-- Lets the home screen replace the device launcher. Off until enabled in its settings. -->
+        <!-- Edu Launcher's way in: new board, open board, import PDF, board list (BoardsContract). -->
         <activity-alias
-            android:name="id.kelasku.papanguru.HomeLauncher"
-            android:targetActivity="id.kelasku.papanguru.HomeActivity"
-            android:enabled="false"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.HOME" />
-                <category android:name="android.intent.category.DEFAULT" />
-            </intent-filter>
-        </activity-alias>
-
-        <activity
-            android:name="id.kelasku.papanguru.MainActivity"
-            android:exported="false"
-            android:screenOrientation="landscape" />
+            android:name="id.kelasku.papanguru.LauncherEntry"
+            android:targetActivity="id.kelasku.papanguru.MainActivity"
+            android:exported="true"
+            android:permission="id.kelasku.permission.BOARDS" />
     </application>
 </manifest>
