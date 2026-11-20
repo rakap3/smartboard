@@ -1,0 +1,68 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
+    <uses-feature android:name="android.software.leanback" android:required="false" />
+
+    <!-- Classroom sync with the class server (WebSocket + HTTP API). -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- The home screen lists and opens other apps (package visibility, Android 11+). -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.APP_BROWSER" />
+        </intent>
+    </queries>
+
+    <application
+        android:label="${appLabel}"
+        android:icon="${appIcon}"
+        android:roundIcon="${appIcon}"
+        android:banner="${appBanner}"
+        android:usesCleartextTraffic="${cleartext}"
+        android:theme="@android:style/Theme.Material.NoActionBar">
+        <provider
+            android:name="id.kelasku.papanguru.CaptureProvider"
+            android:authorities="${applicationId}.captures"
+            android:exported="false"
+            android:grantUriPermissions="true" />
+
+        <!-- Teacher home screen: the app's entry point. -->
+        <activity
+            android:name="id.kelasku.papanguru.HomeActivity"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:stateNotNeeded="true"
+            android:screenOrientation="landscape">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- Lets the home screen replace the device launcher. Off until enabled in its settings. -->
+        <activity-alias
+            android:name="id.kelasku.papanguru.HomeLauncher"
+            android:targetActivity="id.kelasku.papanguru.HomeActivity"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.HOME" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity
+            android:name="id.kelasku.papanguru.MainActivity"
+            android:exported="false"
+            android:screenOrientation="landscape" />
+    </application>
+</manifest>

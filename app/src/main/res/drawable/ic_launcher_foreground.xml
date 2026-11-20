@@ -1,0 +1,16 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <!-- Board frame -->
+    <path android:fillColor="#FF1E2A33" android:strokeColor="#FFEAF2FA" android:strokeWidth="3"
+        android:strokeLineJoin="round" android:pathData="M33,36h42a4,4 0,0 1,4 4v26a4,4 0,0 1,-4 4h-42a4,4 0,0 1,-4 -4v-26a4,4 0,0 1,4 -4z"/>
+    <!-- Tray -->
+    <path android:fillColor="#00000000" android:strokeColor="#FFEAF2FA" android:strokeWidth="3"
+        android:strokeLineCap="round" android:pathData="M42,76h24"/>
+    <!-- Handwriting stroke -->
+    <path android:fillColor="#00000000" android:strokeColor="#FF82CFFF" android:strokeWidth="3.6"
+        android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M37,60c3,-9 7,-12 10,-7s3,8 7,3 6,-12 10,-6 4,6 7,2"/>
+    <!-- Dot -->
+    <path android:fillColor="#FFFFE066" android:pathData="M70,45m-2.6,0a2.6,2.6 0,1 0,5.2 0a2.6,2.6 0,1 0,-5.2 0"/>
+</vector>
